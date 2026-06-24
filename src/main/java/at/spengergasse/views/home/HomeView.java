@@ -1,5 +1,7 @@
 package at.spengergasse.views.home;
 
+import at.spengergasse.domain.InfoRequest;
+import at.spengergasse.repository.InfoRequestRepository;
 import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -13,6 +15,7 @@ import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
@@ -24,15 +27,18 @@ import org.vaadin.lineawesome.LineAwesomeIconUrl;
 @Menu(order = 0, icon = LineAwesomeIconUrl.APP_STORE)
 public class HomeView extends VerticalLayout {
 
+    private final InfoRequestRepository infoRequestRepository;
+
     private TextField name;
     private Button sayHelloInfo;
 
-    public HomeView() {
+    public HomeView(InfoRequestRepository infoRequestRepository) {
+        this.infoRequestRepository = infoRequestRepository;
+
         setSpacing(false);
         setPadding(false);
         setSizeFull();
 
-        // Bild-Header (halbe Bildschirmhöhe)
         Div hero = new Div();
         hero.getStyle()
                 .set("background-image", "url('images/Strandaussicht.jpg')")
@@ -54,9 +60,16 @@ public class HomeView extends VerticalLayout {
                 .set("margin", "0")
                 .set("white-space", "nowrap");
 
-        hero.add(company);
+        Image headerIcon = new Image("icons/icon.png", "Hotel Icon");
+        headerIcon.setHeight("60px");
+        headerIcon.getStyle().set("filter", "drop-shadow(0 0 6px white)");
 
-        // Beschreibung + Logo nebeneinander
+        HorizontalLayout headerRow = new HorizontalLayout(company, headerIcon);
+        headerRow.setAlignItems(Alignment.CENTER);
+        headerRow.getStyle().set("gap", "1rem");
+
+        hero.add(headerRow);
+
         Paragraph description = new Paragraph(
                 "Willkommen im Hotel Reservations Grundi. Bei uns erwartet Sie " +
                         "ein erstklassiger Aufenthalt mit komfortablen Zimmern, " +
@@ -81,13 +94,11 @@ public class HomeView extends VerticalLayout {
 
         logo.getStyle().set("transform", "rotate(-16deg)");
 
-        // Eingabe & Button
         name = new TextField("Your name");
         sayHelloInfo = new Button("Send me Information");
         sayHelloInfo.addClickListener(e -> openRequestDialog());
         sayHelloInfo.addClickShortcut(Key.ENTER);
 
-        // Impressum
         Div impressum = new Div();
         impressum.getStyle()
                 .set("text-align", "center")
@@ -101,9 +112,6 @@ public class HomeView extends VerticalLayout {
         add(hero, descriptionRow, name, sayHelloInfo, impressum);
     }
 
-    // ──────────────────────────────────────────────
-    // Öffnet das Popup mit dem Anfrageformular
-    // ──────────────────────────────────────────────
     private void openRequestDialog() {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Informationen anfordern");
@@ -130,7 +138,6 @@ public class HomeView extends VerticalLayout {
         plz.setWidth("30%");
         ort.setWidth("70%");
 
-        // Land als Dropdown statt Freitext
         ComboBox<String> land = new ComboBox<>("Land");
         land.setItems(
                 "Österreich", "Deutschland", "Schweiz", "Italien",
@@ -146,14 +153,34 @@ public class HomeView extends VerticalLayout {
         TextField mailadresse = new TextField("E-Mail-Adresse");
         mailadresse.setWidthFull();
 
+        TextArea zusatzfragen = new TextArea("Zusätzliche Fragen / Anmerkungen");
+        zusatzfragen.setWidthFull();
+
         VerticalLayout formLayout = new VerticalLayout(
                 vorname, nachname, strasseRow, ortRow, land,
-                telefonnummer, mailadresse
+                telefonnummer, mailadresse, zusatzfragen
         );
         formLayout.setSpacing(true);
         formLayout.setPadding(false);
 
         Button absenden = new Button("Absenden", e -> {
+            String fehler = validateForm(vorname.getValue(), nachname.getValue(),
+                    telefonnummer.getValue(), mailadresse.getValue());
+
+            if (fehler != null) {
+                Notification.show(fehler);
+                return; // Dialog bleibt offen, nichts wird "abgesendet"
+            }
+
+            InfoRequest request = new InfoRequest(
+                    vorname.getValue(), nachname.getValue(),
+                    strasse.getValue(), hausnummer.getValue(),
+                    plz.getValue(), ort.getValue(), land.getValue(),
+                    telefonnummer.getValue(), mailadresse.getValue(),
+                    zusatzfragen.getValue()
+            );
+            infoRequestRepository.save(request);
+
             Notification.show("Vielen Dank, " + vorname.getValue() + "! Wir melden uns bald bei Ihnen.");
             dialog.close();
         });
@@ -165,6 +192,28 @@ public class HomeView extends VerticalLayout {
         dialog.getFooter().add(abbrechen, absenden);
 
         dialog.open();
+    }
+
+    // ──────────────────────────────────────────────
+    // Prüft die Formularfelder. Gibt eine Fehlermeldung
+    // zurück, falls etwas ungültig ist - oder null,
+    // wenn alles in Ordnung ist
+    // ──────────────────────────────────────────────
+    private String validateForm(String vorname, String nachname,
+                                String telefonnummer, String mailadresse) {
+        if (vorname == null || vorname.isBlank()) {
+            return "Bitte einen Vornamen eingeben.";
+        }
+        if (nachname == null || nachname.isBlank()) {
+            return "Bitte einen Nachnamen eingeben.";
+        }
+        if (mailadresse == null || !mailadresse.contains("@")) {
+            return "Bitte eine gültige E-Mail-Adresse eingeben (muss @ enthalten).";
+        }
+        if (telefonnummer == null || !telefonnummer.matches("[0-9+\\-\\s]+")) {
+            return "Telefonnummer darf nur Ziffern, +, - und Leerzeichen enthalten.";
+        }
+        return null; // alles gültig
     }
 
 }
